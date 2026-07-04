@@ -1,0 +1,38 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.13"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "td-route-trees"
+version = "0.0.1.dev0"
+description = "Study repo: data structures for fast move evaluation in duration-minimization time-dependent vehicle routing (Visser 2020 BBT, Blauth 2024 LCA-BST) on an exact NDCPWLF engine"
+readme = "README.md"
+authors = [
+    { name = "Florian Rascoussier (Onyr)", email = "rascoussier.florian@gmail.com" },
+]
+license = { text = "MIT" }
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "mamut-routing-lib @ git+https://github.com/ANR-MAMUT/MAMUT-routing-lib.git@td",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+cmake.version = ">=3.26"
+wheel.packages = ["src/td_route_trees"]
+sdist.exclude = [".github", "nix-dev"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
