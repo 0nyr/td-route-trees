@@ -139,4 +139,154 @@ BenchResult bench_exchange(const Instance& inst,
     return result;
 }
 
+BenchResult bench_update(const Instance& inst,
+                         const std::vector<std::int32_t>& route,
+                         std::int64_t num_updates, std::uint64_t seed,
+                         int method) {
+    using kayros::Pwlf;
+    const std::int64_t m = static_cast<std::int64_t>(route.size());
+    if (m < 2) throw std::invalid_argument("route too short for updates");
+    std::mt19937_64 rng(seed);
+    std::uniform_int_distribution<std::int64_t> pick_pos(1, m - 1);
+    std::uniform_int_distribution<std::int32_t> pick_cust(1, inst.num_customers);
+
+    std::vector<Pwlf> leaves = route_leaves(inst, route.data(), m);
+    RouteTree bbt;
+    LcaTree lca;
+    BenchResult result;
+    result.evals = num_updates;
+
+    {
+        const auto t0 = Clock::now();
+        if (method == 1) {
+            bbt.build(leaves);
+        } else {
+            lca.build(leaves);
+        }
+        result.build_ns_total =
+            std::chrono::duration<double, std::nano>(Clock::now() - t0).count();
+    }
+
+    const auto t0 = Clock::now();
+    for (std::int64_t t = 0; t < num_updates; ++t) {
+        const std::int64_t pos = pick_pos(rng);
+        std::int32_t c = pick_cust(rng);
+        while (c == route[static_cast<std::size_t>(pos - 1)]) c = pick_cust(rng);
+        // Replace leaf `pos` by the bridge for customer c at that position —
+        // the state change an accepted relocate/exchange produces.
+        Pwlf fn = detail::bridge_leaf(
+            inst, route[static_cast<std::size_t>(pos - 1)], c);
+        Pwlf full;
+        if (method == 1) {
+            leaves[static_cast<std::size_t>(pos)] = std::move(fn);
+            bbt.build(leaves);  // Visser: full rebuild on change
+            full = bbt.root();
+        } else {
+            lca.update_leaf(pos, std::move(fn));  // Blauth: localized update
+            full = lca.query(0, m);
+        }
+        if (!full.xs.empty()) {
+            const kayros::MinShift s = kayros::min_shifted_image(kayros::view(full));
+            result.feasible += 1;
+            result.checksum += s.value;
+        }
+    }
+    const double total_ns =
+        std::chrono::duration<double, std::nano>(Clock::now() - t0).count();
+    result.ns_per_eval = total_ns / static_cast<double>(result.evals);
+    return result;
+}
+
+BenchResult bench_insertion_scan(const Instance& inst,
+                                 const std::vector<std::int32_t>& route,
+                                 std::int64_t num_candidates,
+                                 std::uint64_t seed, int method) {
+    using kayros::Pwlf;
+    using kayros::compose;
+    using kayros::identity;
+    using kayros::view;
+    const std::int64_t m = static_cast<std::int64_t>(route.size());
+    std::mt19937_64 rng(seed);
+    std::uniform_int_distribution<std::int32_t> pick_cust(1, inst.num_customers);
+    std::vector<std::int32_t> candidates;
+    candidates.reserve(static_cast<std::size_t>(num_candidates));
+    for (std::int64_t k = 0; k < num_candidates; ++k) {
+        candidates.push_back(pick_cust(rng));
+    }
+
+    LcaTree tree;
+    BenchResult result;
+    result.evals = num_candidates * (m + 1);
+    {
+        const auto t0 = Clock::now();
+        tree.build(route_leaves(inst, route.data(), m));
+        result.build_ns_total =
+            std::chrono::duration<double, std::nano>(Clock::now() - t0).count();
+    }
+
+    double dep_lo = inst.horizon_start;
+    double dep_hi = inst.horizon_end;
+    if (inst.has_time_windows) {
+        dep_lo = std::max(dep_lo, inst.tw_earliest[0]);
+        dep_hi = std::min(dep_hi, inst.tw_latest[0]);
+    }
+    const Pwlf dep = identity(dep_lo, dep_hi);
+
+    auto score_from = [&](const Pwlf& prefix, std::int64_t i, std::int32_t c) {
+        // prefix covers service completion at route[i-1] (or the depot
+        // departure window for i == 0); insert c before route[i].
+        const std::int32_t before =
+            i > 0 ? route[static_cast<std::size_t>(i - 1)] : 0;
+        if (c == before || (i < m && c == route[static_cast<std::size_t>(i)])) {
+            return;  // self arc: no such move
+        }
+        Pwlf acc = compose(view(detail::bridge_leaf(inst, before, c)), view(prefix));
+        if (acc.xs.empty()) return;
+        if (i < m) {
+            acc = compose(view(detail::bridge_leaf(
+                              inst, c, route[static_cast<std::size_t>(i)])),
+                          view(acc));
+            if (acc.xs.empty()) return;
+            if (i + 1 <= m) {
+                const Pwlf suffix = tree.query(i + 1, m);
+                if (suffix.xs.empty()) return;
+                acc = compose(view(suffix), view(acc));
+            }
+        } else {
+            acc = compose(view(detail::return_leaf(inst, c)), view(acc));
+        }
+        if (acc.xs.empty()) return;
+        const kayros::MinShift s = kayros::min_shifted_image(view(acc));
+        result.feasible += 1;
+        result.checksum += s.value;
+    };
+
+    const auto t0 = Clock::now();
+    if (method == 0) {
+        // Per-position tree query for the prefix, every candidate.
+        for (const std::int32_t c : candidates) {
+            for (std::int64_t i = 0; i <= m; ++i) {
+                const Pwlf prefix = i == 0 ? dep : tree.query(0, i - 1);
+                if (prefix.xs.empty()) break;
+                score_from(prefix, i, c);
+            }
+        }
+    } else {
+        // Incremental left-fold prefix, advanced once per position and
+        // shared across all candidates at that position.
+        Pwlf prefix = dep;
+        for (std::int64_t i = 0; i <= m; ++i) {
+            if (i > 0) {
+                prefix = compose(view(tree.leaf(i - 1)), view(prefix));
+                if (prefix.xs.empty()) break;
+            }
+            for (const std::int32_t c : candidates) score_from(prefix, i, c);
+        }
+    }
+    const double total_ns =
+        std::chrono::duration<double, std::nano>(Clock::now() - t0).count();
+    result.ns_per_eval = total_ns / static_cast<double>(result.evals);
+    return result;
+}
+
 }  // namespace trt

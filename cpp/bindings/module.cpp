@@ -266,6 +266,38 @@ PYBIND11_MODULE(_core, m) {
           py::arg("max_seg"), py::arg("seed"), py::arg("method"),
           py::arg("mode") = 0);
 
+    m.def("bench_update",
+          [](const kayros::Instance& inst, const std::vector<std::int32_t>& route,
+             std::int64_t num_updates, std::uint64_t seed, int method) {
+              const trt::BenchResult r =
+                  trt::bench_update(inst, route, num_updates, seed, method);
+              py::dict out;
+              out["ns_per_eval"] = r.ns_per_eval;
+              out["evals"] = r.evals;
+              out["feasible"] = r.feasible;
+              out["checksum"] = r.checksum;
+              out["build_ns_total"] = r.build_ns_total;
+              return out;
+          },
+          py::arg("instance"), py::arg("route"), py::arg("num_updates"),
+          py::arg("seed"), py::arg("method"));
+
+    m.def("bench_insertion_scan",
+          [](const kayros::Instance& inst, const std::vector<std::int32_t>& route,
+             std::int64_t num_candidates, std::uint64_t seed, int method) {
+              const trt::BenchResult r = trt::bench_insertion_scan(
+                  inst, route, num_candidates, seed, method);
+              py::dict out;
+              out["ns_per_eval"] = r.ns_per_eval;
+              out["evals"] = r.evals;
+              out["feasible"] = r.feasible;
+              out["checksum"] = r.checksum;
+              out["build_ns_total"] = r.build_ns_total;
+              return out;
+          },
+          py::arg("instance"), py::arg("route"), py::arg("num_candidates"),
+          py::arg("seed"), py::arg("method"));
+
     // --- Normalization study (norm-vs-no-norm checker question) ---
     m.def("prune",
           [](std::vector<double> xs, std::vector<double> ys, int mode) {

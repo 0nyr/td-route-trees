@@ -39,6 +39,8 @@ EXTRA_ACCURACY: list[tuple[str, str, str, str]] = [
     ("TDVRP", "Dabia2013", "n=100", "R211"),
     ("TDVRP", "Rifki2020", "n=30", "Rifki-10"),
     ("TDVRP", "Ari2018", "n=30", "Ari-A10-pB-d70-w50"),
+    ("TDVRPTW", "Vu2020", "n=99", None),
+    ("TDVRP", "Vu2020", "n=99", None),
 ]
 
 # Move-eval timing axis: the session-6 bench heroes + heavy-bp families.
@@ -57,7 +59,7 @@ CHAIN_PICKS: list[tuple[str, str, str, str | None]] = [
     ("TDVRP", "Dabia2013", "n=100", "R211"),
     ("TDVRP", "Rifki2020", "n=30", "Rifki-10"),
     ("TDVRP", "Ari2018", "n=30", "Ari-A10-pB-d70-w50"),
-    ("TDVRP", "Vu2020", "n=15", None),  # first instance in the dir
+    ("TDVRP", "Vu2020", "n=59", None),  # first instance in the dir
 ]
 CHAIN_MAX_LEN = 200
 CHAIN_COUNT = 20
@@ -233,15 +235,21 @@ def main() -> None:
 
     if not args.quick:
         for problem_type, family, size_dir, stem in EXTRA_ACCURACY:
-            path = root / problem_type / family / size_dir / f"{stem}.vrp.json"
-            if not path.is_file():
-                continue
+            if stem is None:
+                found = sorted((root / problem_type / family / size_dir).glob("*.vrp.json"))
+                if not found:
+                    continue
+                path = found[0]
+            else:
+                path = root / problem_type / family / size_dir / f"{stem}.vrp.json"
+                if not path.is_file():
+                    continue
             stats = study_instance(path, args.routes, args.seed)
             stats.update(problem_type=problem_type, family=family, size=size_dir)
             results["accuracy"].append(stats)
             m = stats["modes"]
             print(
-                f"[acc] {problem_type}/{family}/{stem}: bp "
+                f"[acc] {problem_type}/{family}/{path.stem}: bp "
                 + " ".join(f"{name}={m[name]['total_final_bp']}" for name in MODES.values())
                 + f" | dstar_eq v2={m['collinear']['dstar_bitwise']}/{stats['routes']}"
                 f" v3={m['eps_slope']['dstar_bitwise']}/{stats['routes']}"

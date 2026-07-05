@@ -37,8 +37,8 @@ def sample_instance_paths() -> list[Path]:
         ("TDVRP", "Dabia2013", "n=25", ["C101", "R201"]),
         ("TDVRPTW", "Rifki2020", "n=10", []),
         ("TDVRP", "Rifki2020", "n=10", []),
-        ("TDVRPTW", "Ari2018", "n=10", []),
-        ("TDVRPTW", "Vu2020", "n=15", []),
+        ("TDVRPTW", "Ari2018", "n=15", []),
+        ("TDVRPTW", "Vu2020", "n=59", []),
     ]
     paths: list[Path] = []
     for problem_type, family, size_dir, names in picks:

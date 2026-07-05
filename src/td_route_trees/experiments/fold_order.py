@@ -32,10 +32,10 @@ DEFAULT_PICKS: list[tuple[str, str, str, int]] = [
     ("TDVRPTW", "Rifki2020", "n=10", 4),
     ("TDVRPTW", "Rifki2020", "n=30", 2),
     ("TDVRP", "Rifki2020", "n=10", 2),
-    ("TDVRPTW", "Ari2018", "n=10", 4),
+    ("TDVRPTW", "Ari2018", "n=15", 4),
     ("TDVRPTW", "Ari2018", "n=30", 2),
-    ("TDVRPTW", "Vu2020", "n=15", 4),
-    ("TDVRP", "Vu2020", "n=15", 2),
+    ("TDVRPTW", "Vu2020", "n=59", 4),
+    ("TDVRP", "Vu2020", "n=59", 2),
 ]
 
 
