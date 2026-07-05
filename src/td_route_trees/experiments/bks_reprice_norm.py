@@ -30,9 +30,13 @@ def main() -> None:
     args = parser.parse_args()
 
     root = benchmarks_root()
+    # Two baselines per mode: the stored duration (checker interleaved fold,
+    # the store's definition) and the mode-0 leaf fold (isolates pruning
+    # drift from the known leaf-vs-interleaved association ulps of P4.1).
     totals = {
         name: {"solutions": 0, "exact": 0, "changed": 0, "max_abs_diff": 0.0,
-               "max_rel_diff": 0.0, "feasibility_flips": 0, "worst": None}
+               "max_rel_diff": 0.0, "feasibility_flips": 0, "worst": None,
+               "eq_none": 0, "max_abs_diff_vs_none": 0.0}
         for name in MODES.values()
     }
     families: dict[str, dict] = {}
@@ -44,7 +48,7 @@ def main() -> None:
         if not instance_path.is_file():
             continue
         data = json.loads(bks_path.read_text())
-        stored = float(data["duration"])
+        stored = float(data["cost"])
         routes = [list(map(int, r)) for r in data["routes"]]
         loaded = load_instance(instance_path)
         inst = to_core(loaded)
@@ -54,6 +58,7 @@ def main() -> None:
             {name: {"solutions": 0, "exact": 0, "changed": 0, "max_abs_diff": 0.0,
                     "feasibility_flips": 0} for name in MODES.values()},
         )
+        none_total: float | None = None
         for mode, name in MODES.items():
             total = 0.0
             flip = False
@@ -71,6 +76,15 @@ def main() -> None:
                 t["feasibility_flips"] += 1
                 f["feasibility_flips"] += 1
                 continue
+            if mode == 0:
+                none_total = total
+            if none_total is not None:
+                if total == none_total:
+                    t["eq_none"] += 1
+                else:
+                    t["max_abs_diff_vs_none"] = max(
+                        t["max_abs_diff_vs_none"], abs(total - none_total)
+                    )
             if total == stored:
                 t["exact"] += 1
                 f["exact"] += 1
