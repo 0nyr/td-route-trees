@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "core/instance.h"
+#include "structures/norm.h"
 
 namespace trt {
 
@@ -20,9 +21,15 @@ namespace trt {
 // Updates are full rebuilds (Visser Section 5.6): call build() again.
 class RouteTree {
   public:
-    void build(std::vector<kayros::Pwlf> leaves);
+    // Norm study: mode != none prunes every internal composition (callers
+    // should pass leaves from route_leaves_norm with the same mode).
+    void build(std::vector<kayros::Pwlf> leaves,
+               NormMode mode = NormMode::none);
 
     std::int64_t num_leaves() const { return static_cast<std::int64_t>(leaves_.size()); }
+    NormMode norm_mode() const { return mode_; }
+    // Breakpoints stored across all tree nodes (structure memory metric).
+    std::int64_t total_stored_bp() const;
     const kayros::Pwlf& root() const;
     const kayros::Pwlf& leaf(std::int64_t i) const { return leaves_[static_cast<std::size_t>(i)]; }
 
@@ -43,6 +50,7 @@ class RouteTree {
     std::vector<kayros::Pwlf> leaves_;
     std::vector<Node> nodes_;
     std::int32_t root_ = -1;
+    NormMode mode_ = NormMode::none;
 };
 
 // Exchange-move evaluation on trees (Visser Eq. 7 generalized): the new first

@@ -18,12 +18,21 @@ using kayros::make_theta;
 using kayros::min_shifted_image;
 using kayros::view;
 
-void RouteTree::build(std::vector<Pwlf> leaves) {
+void RouteTree::build(std::vector<Pwlf> leaves, NormMode mode) {
     if (leaves.empty()) throw std::invalid_argument("no leaves");
     leaves_ = std::move(leaves);
+    mode_ = mode;
     nodes_.clear();
     nodes_.reserve(2 * leaves_.size());
     root_ = build_range(0, static_cast<std::int64_t>(leaves_.size()) - 1);
+}
+
+std::int64_t RouteTree::total_stored_bp() const {
+    std::int64_t total = 0;
+    for (const Node& node : nodes_) {
+        total += static_cast<std::int64_t>(node.fn.xs.size());
+    }
+    return total;
 }
 
 std::int32_t RouteTree::build_range(std::int64_t lo, std::int64_t hi) {
@@ -43,7 +52,7 @@ std::int32_t RouteTree::build_range(std::int64_t lo, std::int64_t hi) {
         if (lf.xs.empty() || rf.xs.empty()) {
             node.fn = {};
         } else {
-            node.fn = compose(view(rf), view(lf));
+            node.fn = compose_norm(view(rf), view(lf), mode_);
         }
     }
     nodes_.push_back(std::move(node));
@@ -93,18 +102,20 @@ Pwlf RouteTree::query(std::int64_t lo, std::int64_t hi) const {
     Pwlf left_agg = nodes_[static_cast<std::size_t>(cover_nodes[0])].fn;
     for (std::size_t s = 1; s <= split; ++s) {
         if (left_agg.xs.empty()) return left_agg;
-        left_agg = compose(view(nodes_[static_cast<std::size_t>(cover_nodes[s])].fn),
-                           view(left_agg));
+        left_agg = compose_norm(
+            view(nodes_[static_cast<std::size_t>(cover_nodes[s])].fn),
+            view(left_agg), mode_);
     }
     if (split + 1 == cover_nodes.size()) return left_agg;
     Pwlf right_agg = nodes_[static_cast<std::size_t>(cover_nodes.back())].fn;
     for (std::size_t s = cover_nodes.size() - 1; s > split + 1; --s) {
         if (right_agg.xs.empty()) return right_agg;
-        right_agg = compose(view(right_agg),
-                            view(nodes_[static_cast<std::size_t>(cover_nodes[s - 1])].fn));
+        right_agg = compose_norm(
+            view(right_agg),
+            view(nodes_[static_cast<std::size_t>(cover_nodes[s - 1])].fn), mode_);
     }
     if (left_agg.xs.empty() || right_agg.xs.empty()) return {};
-    return compose(view(right_agg), view(left_agg));
+    return compose_norm(view(right_agg), view(left_agg), mode_);
 }
 
 RouteEval eval_spliced(const Instance& inst, const RouteTree& tree1,

@@ -15,6 +15,7 @@ pybind11_add_module(_core
     cpp/pwlf/pwlf.cpp
     cpp/core/route_eval.cpp
     cpp/structures/baseline.cpp
+    cpp/structures/norm.cpp
     cpp/structures/bbt.cpp
     cpp/structures/lca_bst.cpp
     cpp/structures/bench.cpp

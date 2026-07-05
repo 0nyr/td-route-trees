@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "core/instance.h"
+#include "structures/norm.h"
 
 namespace trt {
 
@@ -23,9 +24,14 @@ struct BenchResult {
 // The same seed generates the same move sequence for every method, so
 // checksums are comparable across methods (up to the documented ulp/step
 // association classes).
+//
+// mode != none runs the whole evaluation under the normalizing engine:
+// naive switches from evaluate_route to the pruned leaf fold, trees are
+// built with pruned leaves and prune every stored/queried composition.
 BenchResult bench_exchange(const kayros::Instance& inst,
                            const std::vector<std::vector<std::int32_t>>& routes,
                            std::int64_t num_moves, std::int64_t max_seg,
-                           std::uint64_t seed, int method);
+                           std::uint64_t seed, int method,
+                           NormMode mode = NormMode::none);
 
 }  // namespace trt

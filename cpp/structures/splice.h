@@ -7,13 +7,15 @@
 
 #include "core/instance.h"
 #include "structures/baseline.h"
+#include "structures/norm.h"
 
 namespace trt {
 
 namespace detail {
 
 inline kayros::Pwlf bridge_leaf(const kayros::Instance& inst, std::int32_t from,
-                                std::int32_t to) {
+                                std::int32_t to,
+                                NormMode mode = NormMode::none) {
     const kayros::PwlfView alpha = inst.arc(from, to);
     if (alpha.n == 0) return {};
     const double service_time = inst.service_times[to];
@@ -25,10 +27,11 @@ inline kayros::Pwlf bridge_leaf(const kayros::Instance& inst, std::int32_t from,
         theta = kayros::Pwlf{{0.0, alpha.ys[alpha.n - 1]},
                              {service_time, alpha.ys[alpha.n - 1] + service_time}};
     }
-    return kayros::compose(kayros::view(theta), alpha);
+    return compose_norm(kayros::view(theta), alpha, mode);
 }
 
-inline kayros::Pwlf return_leaf(const kayros::Instance& inst, std::int32_t from) {
+inline kayros::Pwlf return_leaf(const kayros::Instance& inst, std::int32_t from,
+                                NormMode mode = NormMode::none) {
     const kayros::PwlfView alpha = inst.arc(from, 0);
     kayros::Pwlf tail{std::vector<double>(alpha.xs, alpha.xs + alpha.n),
                       std::vector<double>(alpha.ys, alpha.ys + alpha.n)};
@@ -36,6 +39,7 @@ inline kayros::Pwlf return_leaf(const kayros::Instance& inst, std::int32_t from)
         const kayros::Pwlf clamp = kayros::identity(0.0, inst.tw_latest[0]);
         tail = kayros::compose(kayros::view(clamp), kayros::view(tail));
     }
+    prune_inplace(tail, mode);
     return tail;
 }
 
@@ -58,6 +62,7 @@ kayros::RouteEval eval_spliced_impl(const kayros::Instance& inst,
     using kayros::identity;
     using kayros::view;
 
+    const NormMode mode = tree1.norm_mode();
     const std::int64_t m1 = static_cast<std::int64_t>(route1.size());
     const std::int64_t m2 = static_cast<std::int64_t>(route2.size());
     const bool incoming = i2 <= j2;
@@ -89,35 +94,35 @@ kayros::RouteEval eval_spliced_impl(const kayros::Instance& inst,
     std::int32_t last = head ? route1[static_cast<std::size_t>(i1 - 1)] : 0;
 
     if (incoming) {
-        const Pwlf bridge =
-            detail::bridge_leaf(inst, last, route2[static_cast<std::size_t>(i2)]);
+        const Pwlf bridge = detail::bridge_leaf(
+            inst, last, route2[static_cast<std::size_t>(i2)], mode);
         if (bridge.xs.empty()) return {false, 0.0, 0.0};
-        acc = compose(view(bridge), view(acc));
+        acc = compose_norm(view(bridge), view(acc), mode);
         if (acc.xs.empty()) return {false, 0.0, 0.0};
         if (j2 > i2) {
             const Pwlf middle = tree2.query(i2 + 1, j2);
             if (middle.xs.empty()) return {false, 0.0, 0.0};
-            acc = compose(view(middle), view(acc));
+            acc = compose_norm(view(middle), view(acc), mode);
             if (acc.xs.empty()) return {false, 0.0, 0.0};
         }
         last = route2[static_cast<std::size_t>(j2)];
     }
 
     if (tail) {
-        const Pwlf bridge =
-            detail::bridge_leaf(inst, last, route1[static_cast<std::size_t>(j1 + 1)]);
+        const Pwlf bridge = detail::bridge_leaf(
+            inst, last, route1[static_cast<std::size_t>(j1 + 1)], mode);
         if (bridge.xs.empty()) return {false, 0.0, 0.0};
-        acc = compose(view(bridge), view(acc));
+        acc = compose_norm(view(bridge), view(acc), mode);
         if (acc.xs.empty()) return {false, 0.0, 0.0};
         if (j1 + 2 <= m1) {
             const Pwlf suffix = tree1.query(j1 + 2, m1);
             if (suffix.xs.empty()) return {false, 0.0, 0.0};
-            acc = compose(view(suffix), view(acc));
+            acc = compose_norm(view(suffix), view(acc), mode);
         }
     } else {
-        const Pwlf ret = detail::return_leaf(inst, last);
+        const Pwlf ret = detail::return_leaf(inst, last, mode);
         if (ret.xs.empty()) return {false, 0.0, 0.0};
-        acc = compose(view(ret), view(acc));
+        acc = compose_norm(view(ret), view(acc), mode);
     }
     if (acc.xs.empty()) return {false, 0.0, 0.0};
     const kayros::MinShift s = kayros::min_shifted_image(view(acc));

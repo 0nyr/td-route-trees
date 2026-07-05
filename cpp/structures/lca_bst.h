@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "core/instance.h"
+#include "structures/norm.h"
 
 namespace trt {
 
@@ -24,10 +25,16 @@ namespace trt {
 // (Blauth's localized update — no full rebuild).
 class LcaTree {
   public:
-    void build(std::vector<kayros::Pwlf> leaves);
+    // Norm study: mode != none prunes every stored composition (callers
+    // should pass leaves from route_leaves_norm with the same mode).
+    void build(std::vector<kayros::Pwlf> leaves,
+               NormMode mode = NormMode::none);
     void update_leaf(std::int64_t leaf, kayros::Pwlf fn);
 
     std::int64_t num_leaves() const { return static_cast<std::int64_t>(leaves_.size()); }
+    NormMode norm_mode() const { return mode_; }
+    // Breakpoints stored across all node tables (structure memory metric).
+    std::int64_t total_stored_bp() const;
     const kayros::Pwlf& leaf(std::int64_t i) const { return leaves_[static_cast<std::size_t>(i)]; }
 
     // Composition of leaves lo..hi inclusive (empty Pwlf propagates).
@@ -57,6 +64,7 @@ class LcaTree {
     std::vector<kayros::Pwlf> leaves_;
     std::vector<Node> nodes_;  // indexed by boundary key
     std::int64_t root_ = -1;
+    NormMode mode_ = NormMode::none;
 };
 
 }  // namespace trt

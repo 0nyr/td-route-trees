@@ -64,7 +64,7 @@ std::vector<Move> sample_moves(const std::vector<std::vector<std::int32_t>>& rou
 BenchResult bench_exchange(const Instance& inst,
                            const std::vector<std::vector<std::int32_t>>& routes,
                            std::int64_t num_moves, std::int64_t max_seg,
-                           std::uint64_t seed, int method) {
+                           std::uint64_t seed, int method, NormMode mode) {
     const std::vector<Move> moves = sample_moves(routes, num_moves, max_seg, seed);
     BenchResult result;
     result.evals = static_cast<std::int64_t>(moves.size());
@@ -76,12 +76,13 @@ BenchResult bench_exchange(const Instance& inst,
         if (method == 1) trees.resize(routes.size());
         if (method == 2) lca_trees.resize(routes.size());
         for (std::size_t r = 0; r < routes.size(); ++r) {
-            auto leaves = route_leaves(inst, routes[r].data(),
-                                       static_cast<std::int64_t>(routes[r].size()));
+            auto leaves = route_leaves_norm(
+                inst, routes[r].data(),
+                static_cast<std::int64_t>(routes[r].size()), mode);
             if (method == 1) {
-                trees[r].build(std::move(leaves));
+                trees[r].build(std::move(leaves), mode);
             } else {
-                lca_trees[r].build(std::move(leaves));
+                lca_trees[r].build(std::move(leaves), mode);
             }
         }
         result.build_ns_total =
@@ -102,8 +103,23 @@ BenchResult bench_exchange(const Instance& inst,
             }
             spliced.insert(spliced.end(), r1.begin() + mv.j1 + 1, r1.end());
             if (spliced.empty()) continue;
-            eval = kayros::evaluate_route(inst, spliced.data(),
-                                          static_cast<std::int64_t>(spliced.size()));
+            if (mode == NormMode::none) {
+                eval = kayros::evaluate_route(
+                    inst, spliced.data(),
+                    static_cast<std::int64_t>(spliced.size()));
+            } else {
+                const auto leaves = route_leaves_norm(
+                    inst, spliced.data(),
+                    static_cast<std::int64_t>(spliced.size()), mode);
+                const kayros::Pwlf delta = fold_left_norm(leaves, mode);
+                if (delta.xs.empty()) {
+                    eval = {false, 0.0, 0.0};
+                } else {
+                    const kayros::MinShift s =
+                        kayros::min_shifted_image(kayros::view(delta));
+                    eval = {true, s.value, s.argmin_x};
+                }
+            }
         } else if (method == 1) {
             eval = eval_spliced(inst, trees[mv.r1], routes[mv.r1], mv.i1, mv.j1,
                                 trees[mv.r2], routes[mv.r2], mv.i2, mv.j2);

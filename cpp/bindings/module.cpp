@@ -12,6 +12,7 @@
 #include "structures/bbt.h"
 #include "structures/bench.h"
 #include "structures/lca_bst.h"
+#include "structures/norm.h"
 #include "structures/splice.h"
 
 namespace py = pybind11;
@@ -113,6 +114,11 @@ py::tuple pwlf_tuple(kayros::Pwlf f) {
     return py::make_tuple(std::move(f.xs), std::move(f.ys));
 }
 
+trt::NormMode to_mode(int mode) {
+    if (mode < 0 || mode > 4) throw std::invalid_argument("mode must be 0..4");
+    return static_cast<trt::NormMode>(mode);
+}
+
 }  // namespace
 
 PYBIND11_MODULE(_core, m) {
@@ -174,15 +180,19 @@ PYBIND11_MODULE(_core, m) {
     // --- P4.2: Visser ready-time-function tree ---
     py::class_<trt::RouteTree>(m, "RouteTree")
         .def(py::init([](const kayros::Instance& inst,
-                         const std::vector<std::int32_t>& route) {
+                         const std::vector<std::int32_t>& route, int mode) {
                  const auto r = checked_route(inst, route);
                  trt::RouteTree tree;
-                 tree.build(trt::route_leaves(
-                     inst, r.data(), static_cast<std::int64_t>(r.size())));
+                 tree.build(trt::route_leaves_norm(
+                                inst, r.data(),
+                                static_cast<std::int64_t>(r.size()),
+                                to_mode(mode)),
+                            to_mode(mode));
                  return tree;
              }),
-             py::arg("instance"), py::arg("route"))
+             py::arg("instance"), py::arg("route"), py::arg("mode") = 0)
         .def_property_readonly("num_leaves", &trt::RouteTree::num_leaves)
+        .def_property_readonly("total_stored_bp", &trt::RouteTree::total_stored_bp)
         .def("root",
              [](const trt::RouteTree& tree) {
                  kayros::Pwlf f = tree.root();
@@ -205,15 +215,19 @@ PYBIND11_MODULE(_core, m) {
     // --- P4.3: Blauth LCA-BST ---
     py::class_<trt::LcaTree>(m, "LcaTree")
         .def(py::init([](const kayros::Instance& inst,
-                         const std::vector<std::int32_t>& route) {
+                         const std::vector<std::int32_t>& route, int mode) {
                  const auto r = checked_route(inst, route);
                  trt::LcaTree tree;
-                 tree.build(trt::route_leaves(
-                     inst, r.data(), static_cast<std::int64_t>(r.size())));
+                 tree.build(trt::route_leaves_norm(
+                                inst, r.data(),
+                                static_cast<std::int64_t>(r.size()),
+                                to_mode(mode)),
+                            to_mode(mode));
                  return tree;
              }),
-             py::arg("instance"), py::arg("route"))
+             py::arg("instance"), py::arg("route"), py::arg("mode") = 0)
         .def_property_readonly("num_leaves", &trt::LcaTree::num_leaves)
+        .def_property_readonly("total_stored_bp", &trt::LcaTree::total_stored_bp)
         .def("query", [](const trt::LcaTree& tree, std::int64_t lo,
                          std::int64_t hi) { return pwlf_tuple(tree.query(lo, hi)); })
         .def("update_leaf",
@@ -237,9 +251,9 @@ PYBIND11_MODULE(_core, m) {
           [](const kayros::Instance& inst,
              const std::vector<std::vector<std::int32_t>>& routes,
              std::int64_t num_moves, std::int64_t max_seg, std::uint64_t seed,
-             int method) {
-              const trt::BenchResult r =
-                  trt::bench_exchange(inst, routes, num_moves, max_seg, seed, method);
+             int method, int mode) {
+              const trt::BenchResult r = trt::bench_exchange(
+                  inst, routes, num_moves, max_seg, seed, method, to_mode(mode));
               py::dict out;
               out["ns_per_eval"] = r.ns_per_eval;
               out["evals"] = r.evals;
@@ -249,5 +263,56 @@ PYBIND11_MODULE(_core, m) {
               return out;
           },
           py::arg("instance"), py::arg("routes"), py::arg("num_moves"),
-          py::arg("max_seg"), py::arg("seed"), py::arg("method"));
+          py::arg("max_seg"), py::arg("seed"), py::arg("method"),
+          py::arg("mode") = 0);
+
+    // --- Normalization study (norm-vs-no-norm checker question) ---
+    m.def("prune",
+          [](std::vector<double> xs, std::vector<double> ys, int mode) {
+              kayros::Pwlf f{std::move(xs), std::move(ys)};
+              trt::prune_inplace(f, to_mode(mode));
+              return pwlf_tuple(std::move(f));
+          },
+          py::arg("xs"), py::arg("ys"), py::arg("mode"));
+
+    m.def("evaluate_pwlf",
+          [](std::vector<double> xs, std::vector<double> ys, double x) {
+              const kayros::Pwlf f{std::move(xs), std::move(ys)};
+              return kayros::evaluate(kayros::view(f), x);
+          },
+          py::arg("xs"), py::arg("ys"), py::arg("x"));
+
+    m.def("fold_profile",
+          [](const kayros::Instance& inst,
+             const std::vector<std::int32_t>& route, int mode) {
+              const auto r = checked_route(inst, route);
+              trt::FoldProfile p = trt::fold_profile(
+                  inst, r.data(), static_cast<std::int64_t>(r.size()),
+                  to_mode(mode));
+              py::dict out;
+              out["feasible"] = p.feasible;
+              out["delta_star"] = p.delta_star;
+              out["argmin_x"] = p.argmin_x;
+              out["prefix_bp"] = p.prefix_bp;
+              out["xs"] = std::move(p.delta.xs);
+              out["ys"] = std::move(p.delta.ys);
+              return out;
+          },
+          py::arg("instance"), py::arg("route"), py::arg("mode") = 0);
+
+    m.def("bench_fold",
+          [](const kayros::Instance& inst,
+             const std::vector<std::vector<std::int32_t>>& routes,
+             std::int64_t repeats, int mode) {
+              const trt::FoldBench b =
+                  trt::bench_fold(inst, routes, repeats, to_mode(mode));
+              py::dict out;
+              out["ns_per_fold"] = b.ns_per_fold;
+              out["folds"] = b.folds;
+              out["feasible"] = b.feasible;
+              out["checksum"] = b.checksum;
+              return out;
+          },
+          py::arg("instance"), py::arg("routes"), py::arg("repeats"),
+          py::arg("mode") = 0);
 }
