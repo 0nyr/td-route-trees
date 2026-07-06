@@ -1,0 +1,38 @@
+cff-version: 1.2.0
+title: td-route-trees
+message: >-
+  If you use td-route-trees, please cite it using the metadata
+  from this file.
+type: software
+authors:
+  - given-names: Florian
+    family-names: Rascoussier
+    alias: Onyr
+    affiliation: IMT Atlantique; INSA Lyon
+    orcid: "https://orcid.org/0009-0005-3253-9814"
+url: "https://github.com/0nyr/td-route-trees"
+repository-code: "https://github.com/0nyr/td-route-trees"
+abstract: >-
+  td-route-trees is a study repository for fast move evaluation in
+  duration-minimization time-dependent vehicle routing. It compares
+  route ready-time function trees, LCA-BST style structures, and
+  prefix/suffix composition-reuse techniques on a shared exact
+  non-decreasing continuous piecewise-linear engine, with validation
+  against the MAMUT routing checker.
+keywords:
+  - time-dependent vehicle routing problem
+  - TDVRPTW
+  - TDVRP
+  - vehicle routing problem
+  - local search
+  - move evaluation
+  - route duration
+  - piecewise-linear functions
+  - NDCPWLF
+  - route trees
+  - benchmarking
+  - operations research
+  - combinatorial optimization
+  - research software
+license: MIT
+version: "0.0.1.dev0"
